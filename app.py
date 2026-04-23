@@ -1,25 +1,29 @@
 import streamlit as st
-import kagglehub
-from kagglehub import KaggleDatasetAdapter
 import pandas as pd
 import numpy as np
 import pickle
+import os
 
 # -----------------------------
-# LOAD MODEL
+# LOAD MODEL SAFELY
 # -----------------------------
-with open("model1.pkl", "rb") as f:
+MODEL_PATH = "model1.pkl"
+
+if not os.path.exists(MODEL_PATH):
+    st.error("❌ model1.pkl not found. Please upload it.")
+    st.stop()
+
+with open(MODEL_PATH, "rb") as f:
     model, scaler, le, columns = pickle.load(f)
 
 # -----------------------------
 # TITLE
 # -----------------------------
 st.title("🌱 Smart Agriculture Prediction App")
-
 st.write("Enter input values to predict output")
 
 # -----------------------------
-# USER INPUT (AUTO FROM COLUMNS)
+# USER INPUT
 # -----------------------------
 user_input = []
 
@@ -34,29 +38,44 @@ if st.button("Predict"):
     try:
         input_data = pd.DataFrame([user_input], columns=columns)
 
+        # Ensure correct column order
+        input_data = input_data[columns]
+
         # Scale input
         input_scaled = scaler.transform(input_data)
 
         # Predict
         prediction = model.predict(input_scaled)
 
-        # Decode label
-        result = le.inverse_transform(prediction)
+        # Decode safely
+        try:
+            result = le.inverse_transform(prediction)
+            output = result[0]
+        except:
+            output = prediction[0]
 
-        st.success(f"Prediction: {result[0]}")
+        st.success(f"🌾 Prediction: {output}")
+
+        # Show confidence if available
+        if hasattr(model, "predict_proba"):
+            probs = model.predict_proba(input_scaled)
+            st.info(f"Confidence: {np.max(probs):.2f}")
 
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(f"❌ Error: {e}")
 
 # -----------------------------
-# OPTIONAL: SHOW DATASET
+# DATASET (LOCAL FILE)
 # -----------------------------
 st.subheader("Dataset Preview")
 
+@st.cache_data
+def load_data():
+    return pd.read_csv("data.csv")  # <-- Put your dataset here
+
 if st.button("Show Dataset"):
-    df = kagglehub.load_dataset(
-        KaggleDatasetAdapter.PANDAS,
-        "wisam1985/advanced-iot-agriculture-2024",
-        "Advanced_IoT_Dataset.csv"
-    )
-    st.dataframe(df.head())
+    try:
+        df = load_data()
+        st.dataframe(df.head())
+    except Exception as e:
+        st.error(f"❌ Failed to load dataset: {e}")
